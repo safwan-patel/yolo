@@ -15,21 +15,21 @@ CLASS_SCALE      = 1.0
 
 class Yolo:
 
-    def __init__(self, input_shape, labels, grid, anchors, boxes=5, true_box_buffer=50, name='yolo'):
+    def __init__(self, input_shape, labels, grid, anchors, max_grid_box=5, max_image_box=50, name='yolo'):
         self.input_shape = input_shape
         self.labels = labels
         self.class_weights = np.ones(len(self.labels), dtype='float32')
         self.grid = grid
-        self.boxes = boxes
         self.anchors = anchors
-        self.true_box_buffer = true_box_buffer
+        self.max_grid_box = max_grid_box
+        self.max_image_box = max_image_box
         self.name = name
         self.init_layers()
 
     def init_layers(self):
 
         self.input_image = Input(shape=self.input_shape)
-        self.true_boxes  = Input(shape=(1, 1, 1, self.true_box_buffer , 4))
+        self.true_boxes  = Input(shape=(1, 1, 1, self.max_image_box , 4))
 
         # Layer 1
         self.conv1 = Conv2D(32, (3,3), strides=(1,1), padding='same', name='conv_1', use_bias=False)
@@ -148,8 +148,8 @@ class Yolo:
         self.activ22 = LeakyReLU(alpha=0.1)
 
         # Layer 23
-        self.conv23 = Conv2D(self.boxes * (4 + 1 + len(self.labels)), (1,1), strides=(1,1), padding='same', name='conv_23')
-        self.reshape23 = Reshape((self.grid[0], self.grid[1], self.boxes, 4 + 1 + len(self.labels)))
+        self.conv23 = Conv2D(self.max_grid_box * (4 + 1 + len(self.labels)), (1,1), strides=(1,1), padding='same', name='conv_23')
+        self.reshape23 = Reshape((self.grid[0], self.grid[1], self.max_grid_box, 4 + 1 + len(self.labels)))
 
     def build(self):
         
@@ -307,7 +307,7 @@ class Yolo:
         pred_box_xy = tf.sigmoid(y_pred[..., :2]) + cell_grid
         
         ### adjust w and h
-        pred_box_wh = tf.exp(y_pred[..., 2:4]) * np.reshape(self.anchors, [1,1,1,self.boxes,2])
+        pred_box_wh = tf.exp(y_pred[..., 2:4]) * np.reshape(self.anchors, [1,1,1,self.max_grid_box,2])
         
         ### adjust confidence
         pred_box_conf = tf.sigmoid(y_pred[..., 4])
@@ -399,7 +399,7 @@ class Yolo:
         
         true_box_xy, true_box_wh, coord_mask = tf.cond(tf.less(seen, WARM_UP_BATCHES), 
                             lambda: [true_box_xy + (0.5 + cell_grid) * no_boxes_mask, 
-                                    true_box_wh + tf.ones_like(true_box_wh) * np.reshape(self.anchors, [1,1,1,self.boxes,2]) * no_boxes_mask, 
+                                    true_box_wh + tf.ones_like(true_box_wh) * np.reshape(self.anchors, [1,1,1,self.max_grid_box,2]) * no_boxes_mask, 
                                     tf.ones_like(coord_mask)],
                             lambda: [true_box_xy, 
                                     true_box_wh,
