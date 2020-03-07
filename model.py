@@ -411,25 +411,24 @@ class Yolo:
 
     def fit_generator(self, generator, validation_data=None, epochs=10, verbose=0):
         
-        # early_stop = EarlyStopping(monitor='val_loss',
-        #                            min_delta=0.001, 
-        #                            patience=3, 
-        #                            mode='min', 
-        #                            verbose=verbose)
+        early_stop = EarlyStopping(monitor='val_loss',
+                                  min_delta=0.001, 
+                                  patience=3, 
+                                  mode='min', 
+                                  verbose=verbose)
 
-        # checkpoint = ModelCheckpoint('weights.h5', 
-        #                            monitor='val_loss', 
-        #                            verbose=verbose, 
-        #                            save_best_only=True, 
-        #                            mode='min', 
-        #                            save_freq=5)
+        checkpoint = ModelCheckpoint('weights.h5', 
+                                   monitor='val_loss', 
+                                   verbose=verbose, 
+                                   save_best_only=True, 
+                                   mode='min', 
+                                   save_freq=5)
 
         self.model.fit_generator(generator = generator, 
                     steps_per_epoch  = len(generator),
                     epochs           = epochs, 
                     verbose          = verbose,
                     # callbacks        = [early_stop, checkpoint], 
-                    #max_queue_size   = 3
-                    )
+                    max_queue_size   = 1)
         
 

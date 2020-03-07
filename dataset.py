@@ -56,6 +56,7 @@ class Dataset:
             return int(np.floor(num_of_images / self.batch_size))
 
         def __getitem__(self, idx):
+            print('idx', idx)
             'Generate a batch of data'
             l_bound = idx * self.batch_size
             r_bound = (idx+1) * self.batch_size
@@ -73,7 +74,7 @@ class Dataset:
 
         def get_item(self, img):
             # get image object
-            image = self.get_img(img['file_name'])
+            image, image_size = self.get_img(img['file_name'])
             
             # construct output from object's x, y, w, h
             true_box_index = 0
@@ -85,7 +86,7 @@ class Dataset:
             annotations = self.dataset.loadAnns(annIds)
 
             for annotation in annotations:
-                box = self.get_box(annotation, image_size=image.size)
+                box = self.get_box(annotation, image_size=image_size)
                 x, y, w, h = box
                 
                 grid_x = int(np.floor(x))
@@ -112,13 +113,16 @@ class Dataset:
                 true_box_index += 1
                 true_box_index = true_box_index % self.max_image_box
 
-            image = image.resize((self.image_width, self.image_height), Image.ANTIALIAS)
-            image = np.asarray(image)
             
             return image, y_anntn, true_box
 
         def get_img(self, file_name):
-            return Image.open('%s/%s' % (self.image_dir, file_name))
+            image = Image.open('%s/%s' % (self.image_dir, file_name))
+            size = image.size
+            image = image.resize((self.image_width, self.image_height), Image.ANTIALIAS)
+            img = np.asarray(image)
+            image.close()
+            return img, size
 
         def get_box(self, anntn, image_size):
             bbox = anntn['bbox']            
