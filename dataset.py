@@ -66,11 +66,10 @@ class Dataset:
             
             imgs = self.dataset.loadImgs(self.img_ids[l_bound:r_bound])
             batch_item = np.array(tuple(map(self.get_item, imgs)))
-            inp = [batch_item[:,0], batch_item[:,2]]
-            out = batch_item[:,1]
-            batch = np.array([inp, out])
-            print(batch.shape)
-            return batch
+            images = np.stack(batch_item[:,0], axis=0)
+            true_boxes = np.stack(batch_item[:,2], axis=0)
+            y_out = np.stack(batch_item[:,1], axis=0)
+            return [images, y_out, true_boxes]
 
         def get_item(self, img):
             # get image object

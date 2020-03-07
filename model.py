@@ -3,6 +3,7 @@ import tensorflow as tf
 from tensorflow.keras.models import Sequential, Model
 from tensorflow.keras.layers import Reshape, Activation, Conv2D, Input, MaxPooling2D, BatchNormalization, Flatten, Dense, Lambda
 from tensorflow.keras.layers import ReLU, LeakyReLU, concatenate
+from tensorflow.keras.losses import categorical_crossentropy
 from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
 from tensorflow.keras.optimizers import Adam
 
@@ -28,8 +29,10 @@ class Yolo:
 
     def init_layers(self):
 
+        grid_width, grid_height = self.grid
         self.input_image = Input(shape=self.input_shape)
         self.true_boxes  = Input(shape=(1, 1, 1, self.max_image_box , 4))
+        self.y_true  = Input(shape=(grid_width, grid_height, self.max_grid_box, 4+1+len(self.labels)))
 
         # Layer 1
         self.conv1 = Conv2D(32, (3,3), strides=(1,1), padding='same', name='conv_1', use_bias=False)
@@ -276,29 +279,25 @@ class Yolo:
 
         # Layer 23
         x = self.conv23(x)
-        output = self.reshape23(x)
-        self.model = Model([self.input_image, self.true_boxes], output, name=self.name)
+        self.y_predict = self.reshape23(x)
+        self.model = Model([self.input_image, self.y_true, self.true_boxes], self.y_predict, name=self.name)
     
     def compile(self, optimizer = Adam(lr=0.5e-4, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=0.0)):
-        self.build()
-        self.model.compile(loss=self.custom_loss, optimizer=optimizer)
+        self.model.add_loss(self.custom_loss(self.y_true, self.y_predict, self.true_boxes))
+        self.model.compile(optimizer=optimizer)
             
         
-    def custom_loss(self, y_true, y_pred):
+    def custom_loss(self, y_true, y_pred, true_boxes):
         mask_shape = tf.shape(y_true)[:4]
         grid_width, grid_height = self.grid
         
         cell_x = tf.reshape(tf.range(grid_width * grid_height, dtype='float32'), (1, grid_width, grid_height, 1, 1))
         cell_y = tf.transpose(cell_x, (0,2,1,3,4))
-
         cell_grid = tf.tile(tf.concat([cell_x,cell_y], -1), [BATCH_SIZE, 1, 1, 5, 1])
         
         coord_mask = tf.zeros(mask_shape)
         conf_mask  = tf.zeros(mask_shape)
         class_mask = tf.zeros(mask_shape)
-        
-        seen = tf.Variable(0.)
-        total_recall = tf.Variable(0.)
         
         """
         Adjust prediction
@@ -347,7 +346,7 @@ class Yolo:
         true_box_conf = iou_scores * y_true[..., 4]
         
         ### adjust class probabilities
-        true_box_class = tf.argmax(y_true[..., 5:], -1)
+        true_box_class = y_true[..., 5:]
         
         """
         Determine the masks
@@ -357,8 +356,8 @@ class Yolo:
         
         ### confidence mask: penelize predictors + penalize boxes with low IOU
         # penalize the confidence of the boxes, which have IOU with some ground truth box < 0.6
-        true_xy = self.true_boxes[..., 0:2]
-        true_wh = self.true_boxes[..., 2:4]
+        true_xy = true_boxes[..., 0:2]
+        true_wh = true_boxes[..., 2:4]
         
         true_wh_half = true_wh / 2.
         true_mins    = true_xy - true_wh_half
@@ -389,21 +388,7 @@ class Yolo:
         conf_mask = conf_mask + y_true[..., 4] * OBJECT_SCALE
         
         ### class mask: simply the position of the ground truth boxes (the predictors)
-        class_mask = y_true[..., 4] * tf.gather(self.class_weights, true_box_class) * CLASS_SCALE       
-        
-        """
-        Warm-up training
-        """
-        no_boxes_mask = tf.cast(coord_mask < COORD_SCALE/2., dtype='float32')
-        seen = seen.assign_add(1.)
-        
-        true_box_xy, true_box_wh, coord_mask = tf.cond(tf.less(seen, WARM_UP_BATCHES), 
-                            lambda: [true_box_xy + (0.5 + cell_grid) * no_boxes_mask, 
-                                    true_box_wh + tf.ones_like(true_box_wh) * np.reshape(self.anchors, [1,1,1,self.max_grid_box,2]) * no_boxes_mask, 
-                                    tf.ones_like(coord_mask)],
-                            lambda: [true_box_xy, 
-                                    true_box_wh,
-                                    coord_mask])
+        class_mask = y_true[..., 4] * tf.gather(self.class_weights, tf.argmax(true_box_class, -1)) * CLASS_SCALE       
         
         """
         Finalize the loss
@@ -415,35 +400,36 @@ class Yolo:
         loss_xy    = tf.reduce_sum(tf.square(true_box_xy-pred_box_xy)     * coord_mask) / (nb_coord_box + 1e-6) / 2.
         loss_wh    = tf.reduce_sum(tf.square(true_box_wh-pred_box_wh)     * coord_mask) / (nb_coord_box + 1e-6) / 2.
         loss_conf  = tf.reduce_sum(tf.square(true_box_conf-pred_box_conf) * conf_mask)  / (nb_conf_box  + 1e-6) / 2.
-        loss_class = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=true_box_class, logits=pred_box_class)
+        loss_class = categorical_crossentropy(y_true=true_box_class, y_pred=pred_box_class)
         loss_class = tf.reduce_sum(loss_class * class_mask) / (nb_class_box + 1e-6)
         
         loss = loss_xy + loss_wh + loss_conf + loss_class
-        
         return loss
 
     def summary(self):
         self.model.summary()
 
     def fit_generator(self, generator, validation_data=None, epochs=10, verbose=0):
-        early_stop = EarlyStopping(monitor='val_loss',
-                                    min_delta=0.001, 
-                                    patience=3, 
-                                    mode='min', 
-                                    verbose=verbose)
+        
+        # early_stop = EarlyStopping(monitor='val_loss',
+        #                            min_delta=0.001, 
+        #                            patience=3, 
+        #                            mode='min', 
+        #                            verbose=verbose)
 
-        checkpoint = ModelCheckpoint('weights.h5', 
-                                    monitor='val_loss', 
-                                    verbose=verbose, 
-                                    save_best_only=True, 
-                                    mode='min', 
-                                    save_freq=5)
+        # checkpoint = ModelCheckpoint('weights.h5', 
+        #                            monitor='val_loss', 
+        #                            verbose=verbose, 
+        #                            save_best_only=True, 
+        #                            mode='min', 
+        #                            save_freq=5)
 
         self.model.fit_generator(generator = generator, 
                     steps_per_epoch  = len(generator),
                     epochs           = epochs, 
                     verbose          = verbose,
-                    callbacks        = [early_stop, checkpoint], 
-                    max_queue_size   = 3)
+                    # callbacks        = [early_stop, checkpoint], 
+                    #max_queue_size   = 3
+                    )
         
 
