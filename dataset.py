@@ -39,7 +39,7 @@ class Dataset:
             self.image_width, self.image_height, self.image_channel = image_shape
             self.grid_width, self.grid_height = grid
             
-            self.anchors = anchors
+            self.anchors = [[0, 0, anchors[2*i], anchors[2*i+1]] for i in range(int(len(anchors)//2))]
             self.batch_size = batch_size
             self.max_grid_box = max_grid_box
             self.max_image_box = max_image_box
@@ -68,7 +68,9 @@ class Dataset:
             batch_item = np.array(tuple(map(self.get_item, imgs)))
             inp = [batch_item[:,0], batch_item[:,2]]
             out = batch_item[:,1]
-            return inp, out
+            batch = np.array([inp, out])
+            print(batch.shape)
+            return batch
 
         def get_item(self, img):
             # get image object

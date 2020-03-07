@@ -280,15 +280,15 @@ class Yolo:
         self.model = Model([self.input_image, self.true_boxes], output, name=self.name)
     
     def compile(self, optimizer = Adam(lr=0.5e-4, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=0.0)):
-        if (self.model is None):
-            self.build()
+        self.build()
         self.model.compile(loss=self.custom_loss, optimizer=optimizer)
             
         
     def custom_loss(self, y_true, y_pred):
         mask_shape = tf.shape(y_true)[:4]
+        grid_width, grid_height = self.grid
         
-        cell_x = tf.reshape(tf.range(self.grid[0] * self.grid[1], dtype='float32'), (1, self.grid[0], self.grid[1], 1, 1))
+        cell_x = tf.reshape(tf.range(grid_width * grid_height, dtype='float32'), (1, grid_width, grid_height, 1, 1))
         cell_y = tf.transpose(cell_x, (0,2,1,3,4))
 
         cell_grid = tf.tile(tf.concat([cell_x,cell_y], -1), [BATCH_SIZE, 1, 1, 5, 1])
