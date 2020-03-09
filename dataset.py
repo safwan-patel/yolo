@@ -18,7 +18,7 @@ class Dataset:
 
     def generator(self, image_shape=(416,416,3), grid=(13,13),
         anchors=[0.57273, 0.677385, 1.87446, 2.06253, 3.33843, 5.47434, 7.88282, 3.52778, 9.77052, 9.16828],
-        batch_size=32, max_grid_box=5, max_image_box=50, shuffle=True, jitter=True, norm=None):
+        max_grid_box=5, max_image_box=50, shuffle=True, jitter=True, norm=None):
         return Dataset.BatchGenerator(dataset = self.dataset,
                 image_dir = self.image_dir,
                 batch_size = batch_size,
@@ -33,14 +33,13 @@ class Dataset:
 
     class BatchGenerator(Sequence):
         def __init__(self, dataset, image_dir, image_shape, grid,
-            anchors, batch_size, max_grid_box, max_image_box, shuffle, jitter, norm):
+            anchors, max_grid_box, max_image_box, shuffle, jitter, norm):
             self.dataset = dataset
             self.image_dir = image_dir
             self.image_width, self.image_height, self.image_channel = image_shape
             self.grid_width, self.grid_height = grid
-            
+            # anchors
             self.anchors = [[0, 0, anchors[2*i], anchors[2*i+1]] for i in range(int(len(anchors)//2))]
-            self.batch_size = batch_size
             self.max_grid_box = max_grid_box
             self.max_image_box = max_image_box
             self.jitter = jitter
@@ -49,6 +48,11 @@ class Dataset:
             self.img_ids = dataset.getImgIds()
             if shuffle: np.random.shuffle(self.img_ids)
             self.num_categories = len(self.dataset.getCatIds())
+            # batch size
+            self.batch_size = 32
+
+        def set_batch_size(self, batch_size):
+            self.batch_size = batch_size
 
         def __len__(self):
             'Number of batches per epoch'

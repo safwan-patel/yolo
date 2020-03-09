@@ -1,14 +1,11 @@
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.models import Sequential, Model
-from tensorflow.keras.layers import Reshape, Activation, Conv2D, Input, MaxPooling2D, BatchNormalization, Flatten, Dense, Lambda
-from tensorflow.keras.layers import ReLU, LeakyReLU, concatenate
+from tensorflow.keras.layers import Input, Dense, Conv2D, MaxPooling2D, BatchNormalization, Flatten, Lambda, Reshape, Activation, ReLU, LeakyReLU, concatenate
 from tensorflow.keras.losses import categorical_crossentropy
 from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
 from tensorflow.keras.optimizers import Adam
 
-BATCH_SIZE = 32
-WARM_UP_BATCHES  = 0
 OBJECT_SCALE     = 5.0
 NO_OBJECT_SCALE  = 1.0
 COORD_SCALE      = 1.0
@@ -26,6 +23,7 @@ class Yolo:
         self.max_image_box = max_image_box
         self.name = name
         self.init_layers()
+        self.build()
 
     def init_layers(self):
 
@@ -283,17 +281,17 @@ class Yolo:
         self.model = Model([self.input_image, self.y_true, self.true_boxes], self.y_predict, name=self.name)
     
     def compile(self, optimizer = Adam(lr=0.5e-4, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=0.0)):
+        self.build()
         self.model.add_loss(self.custom_loss(self.y_true, self.y_predict, self.true_boxes))
-        self.model.compile(optimizer=optimizer)
-            
+        self.model.compile(optimizer=optimizer)            
         
     def custom_loss(self, y_true, y_pred, true_boxes):
         mask_shape = tf.shape(y_true)[:4]
         grid_width, grid_height = self.grid
         
-        cell_x = tf.reshape(tf.range(grid_width * grid_height, dtype='float32'), (1, grid_width, grid_height, 1, 1))
-        cell_y = tf.transpose(cell_x, (0,2,1,3,4))
-        cell_grid = tf.tile(tf.concat([cell_x,cell_y], -1), [BATCH_SIZE, 1, 1, 5, 1])
+        cell_x = tf.reshape(tf.range(grid_width * grid_height, dtype='float32'), (grid_width, grid_height, 1, 1))
+        cell_y = tf.transpose(cell_x, (1,0,2,3))
+        cell_grid = tf.tile(tf.concat([cell_x,cell_y], -1), [1, 1, 5, 1])
         
         coord_mask = tf.zeros(mask_shape)
         conf_mask  = tf.zeros(mask_shape)
@@ -409,26 +407,19 @@ class Yolo:
     def summary(self):
         self.model.summary()
 
-    def fit_generator(self, generator, validation_data=None, epochs=10, verbose=0):
-        
-        early_stop = EarlyStopping(monitor='val_loss',
-                                  min_delta=0.001, 
-                                  patience=3, 
-                                  mode='min', 
-                                  verbose=verbose)
+    def fit_generator(self, generator, batch_size=32, validation_data=None, epochs=10, verbose=0):
 
-        checkpoint = ModelCheckpoint('weights.h5', 
-                                   monitor='val_loss', 
-                                   verbose=verbose, 
-                                   save_best_only=True, 
-                                   mode='min', 
+        checkpoint = ModelCheckpoint('weights.h5',
+                                   monitor='val_loss',
+                                   verbose=verbose,
+                                   save_best_only=True,
+                                   mode='min',
                                    save_freq=5)
 
-        self.model.fit_generator(generator = generator, 
-                    steps_per_epoch  = len(generator),
-                    epochs           = epochs, 
-                    verbose          = verbose,
-                    # callbacks        = [early_stop, checkpoint], 
-                    max_queue_size   = 1)
-        
+        generator.set_batch_size(batch_size)
 
+        for epoch in range(epochs):
+            num_of_batches = generator.__len__()
+            for batch_id in range(num_of_batches):
+                batch_data = generator.__getitem__(batch_id)
+                self.model.fit(batch_data, batch_size=batch_size, epochs=epochs, verbose=verbose)
