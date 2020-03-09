@@ -20,7 +20,6 @@ class Dataset:
         anchors=(1.0, 1.0), max_grid_box=5, max_image_box=50, shuffle=True, jitter=True, norm=None):
         return Dataset.BatchGenerator(dataset = self.dataset,
                 image_dir = self.image_dir,
-                batch_size = batch_size,
                 image_shape = image_shape,
                 grid = grid,
                 anchors = anchors,
