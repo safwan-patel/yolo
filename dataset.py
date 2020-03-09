@@ -17,8 +17,7 @@ class Dataset:
         return tuple(map(lambda cat: cat['name'], cats))
 
     def generator(self, image_shape=(416,416,3), grid=(13,13),
-        anchors=[0.57273, 0.677385, 1.87446, 2.06253, 3.33843, 5.47434, 7.88282, 3.52778, 9.77052, 9.16828],
-        max_grid_box=5, max_image_box=50, shuffle=True, jitter=True, norm=None):
+        anchors=(1.0, 1.0), max_grid_box=5, max_image_box=50, shuffle=True, jitter=True, norm=None):
         return Dataset.BatchGenerator(dataset = self.dataset,
                 image_dir = self.image_dir,
                 batch_size = batch_size,
