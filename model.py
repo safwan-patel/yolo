@@ -422,4 +422,4 @@ class Yolo:
             num_of_batches = generator.__len__()
             for batch_id in range(num_of_batches):
                 batch_data = generator.__getitem__(batch_id)
-                self.model.fit(batch_data, batch_size=batch_size, epochs=epochs, verbose=verbose)
+                self.model.fit(batch_data, batch_size=batch_size, verbose=verbose)
