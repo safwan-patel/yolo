@@ -33,6 +33,12 @@ class Dataset:
         def __init__(self, dataset, image_dir, image_shape, grid,
             anchors, max_grid_box, max_image_box, shuffle, jitter, norm):
             self.dataset = dataset
+            # cat-id
+            self.cat_ids = {}
+            catIds = self.dataset.getCatIds()
+            for i in range(len(catIds)):
+              self.cat_ids[catIds[i]] = i
+            
             self.image_dir = image_dir
             self.image_width, self.image_height, self.image_channel = image_shape
             self.grid_width, self.grid_height = grid
@@ -105,10 +111,10 @@ class Dataset:
                         best_anchor = i
                         max_iou     = iou
                 
-                box_class = annotation['category_id']
-                box_class = tf.one_hot(box_class, depth=self.num_categories, dtype='float32')
-                y_anntn[grid_y, grid_x, best_anchor] = tf.concat([box, [1], box_class], axis=0)
-
+                cat_id = self.cat_ids[annotation['category_id']]
+                y_anntn[grid_y, grid_x, best_anchor, 0:4] = box
+                y_anntn[grid_y, grid_x, best_anchor, 4] = 1.0
+                y_anntn[grid_y, grid_x, best_anchor, 5 + cat_id] = 1.0
                 # assign the true box to b_batch
                 true_box[0, 0, 0, true_box_index] = box
 
