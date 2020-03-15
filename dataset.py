@@ -112,9 +112,9 @@ class Dataset:
                         max_iou     = iou
                 
                 cat_id = self.cat_ids[annotation['category_id']]
-                y_anntn[grid_y, grid_x, best_anchor, 0:4] = box
-                y_anntn[grid_y, grid_x, best_anchor, 4] = 1.0
-                y_anntn[grid_y, grid_x, best_anchor, 5 + cat_id] = 1.0
+                y_anntn[grid_x, grid_y, best_anchor, 0:4] = box
+                y_anntn[grid_x, grid_y, best_anchor, 4] = 1.0
+                y_anntn[grid_x, grid_y, best_anchor, 5 + cat_id] = 1.0
                 # assign the true box to b_batch
                 true_box[0, 0, 0, true_box_index] = box
 
