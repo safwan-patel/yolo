@@ -150,7 +150,7 @@ class Yolo:
 
         # Layer 23
         self.conv23 = Conv2D(self.max_grid_box * (4 + 1 + len(self.labels)), (1,1), strides=(1,1), padding='same', name='conv_23')
-        self.reshape23 = Reshape((self.grid[0], self.grid[1], self.max_grid_box, 4 + 1 + len(self.labels)))
+        self.reshape23 = Reshape((grid_width, grid_height, self.max_grid_box, 4 + 1 + len(self.labels)))
 
     def build(self):
         
