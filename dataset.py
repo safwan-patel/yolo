@@ -5,52 +5,56 @@ from pycocotools.coco import COCO
 from PIL import Image
 from utils import bbox_iou
 
-class Dataset:    
+
+class Dataset:
     def __init__(self, data_dir, data_instance='train2014'):
-        annotation_file='{}/annotations/instances_{}.json'.format(data_dir, data_instance)
+        annotation_file = '{}/annotations/instances_{}.json'.format(
+            data_dir, data_instance)
         self.dataset = COCO(annotation_file)
-        self.image_dir = '%s/images/%s' % (data_dir,data_instance)
+        self.image_dir = '%s/images/%s' % (data_dir, data_instance)
 
     def get_labels(self):
         catIds = self.dataset.getCatIds()
         cats = self.dataset.loadCats(catIds)
         return tuple(map(lambda cat: cat['name'], cats))
 
-    def generator(self, image_shape=(416,416,3), grid=(13,13),
-        anchors=(1.0, 1.0), max_grid_box=5, max_image_box=50, shuffle=True, jitter=True, norm=None):
-        return Dataset.BatchGenerator(dataset = self.dataset,
-                image_dir = self.image_dir,
-                image_shape = image_shape,
-                grid = grid,
-                anchors = anchors,
-                max_grid_box = max_grid_box,
-                max_image_box = max_image_box,
-                shuffle = shuffle,
-                jitter = jitter,
-                norm = norm)
+    def generator(self, image_shape=(416, 416, 3), grid=(13, 13),
+                  anchors=(1.0, 1.0), max_grid_box=5, max_image_box=50, shuffle=True, jitter=True, norm=None):
+        return Dataset.BatchGenerator(dataset=self.dataset,
+                                      image_dir=self.image_dir,
+                                      image_shape=image_shape,
+                                      grid=grid,
+                                      anchors=anchors,
+                                      max_grid_box=max_grid_box,
+                                      max_image_box=max_image_box,
+                                      shuffle=shuffle,
+                                      jitter=jitter,
+                                      norm=norm)
 
     class BatchGenerator(Sequence):
         def __init__(self, dataset, image_dir, image_shape, grid,
-            anchors, max_grid_box, max_image_box, shuffle, jitter, norm):
+                     anchors, max_grid_box, max_image_box, shuffle, jitter, norm):
             self.dataset = dataset
             # cat-id
             self.cat_ids = {}
             catIds = self.dataset.getCatIds()
             for i in range(len(catIds)):
-              self.cat_ids[catIds[i]] = i
-            
+                self.cat_ids[catIds[i]] = i
+
             self.image_dir = image_dir
             self.image_width, self.image_height, self.image_channel = image_shape
             self.grid_width, self.grid_height = grid
             # anchors
-            self.anchors = [[0, 0, anchors[2*i], anchors[2*i+1]] for i in range(int(len(anchors)//2))]
+            self.anchors = [[0, 0, anchors[2*i], anchors[2*i+1]]
+                            for i in range(int(len(anchors)//2))]
             self.max_grid_box = max_grid_box
             self.max_image_box = max_image_box
             self.jitter = jitter
             self.norm = norm
 
             self.img_ids = dataset.getImgIds()
-            if shuffle: np.random.shuffle(self.img_ids)
+            if shuffle:
+                np.random.shuffle(self.img_ids)
             self.num_categories = len(self.dataset.getCatIds())
             # batch size
             self.batch_size = 32
@@ -72,23 +76,24 @@ class Dataset:
             if r_bound > len(self.img_ids):
                 r_bound = len(self.img_ids)
                 l_bound = r_bound - self.batch_size
-            
+
             imgs = self.dataset.loadImgs(self.img_ids[l_bound:r_bound])
             batch_item = np.array(tuple(map(self.get_item, imgs)))
-            images = np.stack(batch_item[:,0], axis=0)
-            true_boxes = np.stack(batch_item[:,2], axis=0)
-            y_out = np.stack(batch_item[:,1], axis=0)
+            images = np.stack(batch_item[:, 0], axis=0)
+            true_boxes = np.stack(batch_item[:, 2], axis=0)
+            y_out = np.stack(batch_item[:, 1], axis=0)
             return [images, y_out, true_boxes]
 
         def get_item(self, img):
             # get image object
             image, image_size = self.get_img(img['file_name'])
-            
+
             # construct output from object's x, y, w, h
             true_box_index = 0
-            
+
             # annotation
-            y_anntn = np.zeros(shape=(self.grid_width, self.grid_height, self.max_grid_box, 4+1+self.num_categories))
+            y_anntn = np.zeros(shape=(
+                self.grid_width, self.grid_height, self.max_grid_box, 4+1+self.num_categories))
             true_box = np.zeros(shape=(1, 1, 1,  self.max_image_box, 4))
             annIds = self.dataset.getAnnIds(imgIds=img['id'])
             annotations = self.dataset.loadAnns(annIds)
@@ -96,21 +101,21 @@ class Dataset:
             for annotation in annotations:
                 box = self.get_box(annotation, image_size=image_size)
                 x, y, w, h = box
-                
+
                 grid_x = int(np.floor(x))
                 grid_y = int(np.floor(y))
-                
+
                 # find the anchor that best predicts this box
                 best_anchor = -1
-                max_iou     = -1
-                    
+                max_iou = -1
+
                 for i in range(len(self.anchors)):
                     anchor = self.anchors[i]
                     iou = bbox_iou([0, 0, w, h], anchor)
                     if max_iou < iou:
                         best_anchor = i
-                        max_iou     = iou
-                
+                        max_iou = iou
+
                 cat_id = self.cat_ids[annotation['category_id']]
                 y_anntn[grid_x, grid_y, best_anchor, 0:4] = box
                 y_anntn[grid_x, grid_y, best_anchor, 4] = 1.0
@@ -121,23 +126,26 @@ class Dataset:
                 true_box_index += 1
                 true_box_index = true_box_index % self.max_image_box
 
-            
             return image, y_anntn, true_box
 
         def get_img(self, file_name):
             image = Image.open('%s/%s' % (self.image_dir, file_name))
+            if image.mode != 'RGB':
+                image = image.convert('RGB')
             size = image.size
-            image = image.resize((self.image_width, self.image_height), Image.ANTIALIAS)
-            img = np.asarray(image)
+            image = image.resize(
+                (self.image_width, self.image_height), Image.ANTIALIAS)
+            img = np.asarray(image) / 255
             image.close()
             return img, size
 
         def get_box(self, anntn, image_size):
-            bbox = anntn['bbox']            
+            bbox = anntn['bbox']
             xmin, ymin, b_width, b_height = bbox
             width, height = image_size
             center_x = (xmin + 0.5 * b_width) / float(width / self.grid_width)
-            center_y = (ymin + 0.5 * b_height) / float(height / self.grid_height)
+            center_y = (ymin + 0.5 * b_height) / \
+                float(height / self.grid_height)
             center_w = b_width / float(width / self.grid_width)
             center_h = b_height / float(height / self.grid_height)
             return [center_x, center_y, center_w, center_h]
