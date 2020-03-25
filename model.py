@@ -37,7 +37,7 @@ class Yolo:
 
         self.resnet = ResNet50(
             include_top=False, weights='imagenet', input_shape=self.input_shape)
-
+        self.resnet.trainable = False
         self.res_conv1 = Conv2D(512, (1, 1), strides=(
             1, 1), padding='same', name='res_conv_1')
         self.norm1 = BatchNormalization(name='norm_1')
